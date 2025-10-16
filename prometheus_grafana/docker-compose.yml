@@ -1,0 +1,102 @@
+services:
+
+  prometheus:
+    image: prom/prometheus:v2.36.2
+    container_name: prometheus
+    user: ${USER_ID}
+    volumes:
+      - ./requirements/prometheus/config:/etc/prometheus/
+      - ./requirements/prometheus/data:/prometheus
+    networks:
+      - docker_example
+    ports:
+      - 9091:9090
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    depends_on:
+      - prometheus
+    env_file:
+      - ./requirements/grafana/config.monitoring
+    networks:
+      - docker_example
+    ports:
+      - 3001:3000
+    volumes:
+      - ./requirements/grafana/provisioning/:/etc/grafana/provisioning/
+
+  fastapi:
+    build: ./requirements/fastapi
+    image: fastapi
+    container_name: fastapi
+    networks:
+      - docker_example
+    ports:
+      - 5001:5000
+    volumes:
+      - ./requirements/fastapi/app:/app
+    command: [ '--host', '0.0.0.0', '--port', '5000', '--workers', '8' ]
+
+  redis:
+    container_name: redis
+    image: redis
+    build:
+      context: ./requirements/redis
+    networks:
+      - docker_example
+    ports:
+      - 6380:6379
+    volumes:
+      - ./requirements/redis/data:/data
+    command:
+      - '/etc/redis_conf/redis_7.2.conf'
+
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: redis-exporter
+    networks:
+      - docker_example
+    ports:
+      - 9122:9121
+    command:
+      - '--redis.addr=redis://redis:6379'
+
+  postgres:
+    container_name: postgres
+    image: postgres
+    build:
+      context: ./requirements/postgres
+    environment:
+      POSTGRES_USER: suppliers
+      POSTGRES_PASSWORD: suppliers
+      POSTGRES_DB: suppliers
+      DATA_SOURCE_NAME: "postgresql://suppliers:suppliers@postgres:5432/?sslmode=disable"
+    networks:
+      - docker_example
+    ports:
+      - 5433:5432
+    volumes:
+      - ./requirements/postgres/data:/var/lib/postgresql/data
+      - ./requirements/postgres/initdb.d:/docker-entrypoint-initdb.d
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: postgres-exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://suppliers:suppliers@postgres:5432/suppliers?sslmode=disable"
+    networks:
+      - docker_example
+    ports:
+      - 9188:9187
+    depends_on:
+      - postgres
+
+networks:
+  docker_example:
+    name: docker_example

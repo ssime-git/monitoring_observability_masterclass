@@ -1,0 +1,5 @@
+apiVersion: 1
+
+# This file is intentionally left empty as datasources are configured in separate files:
+# - prometheus.yml
+# - postgres.yml

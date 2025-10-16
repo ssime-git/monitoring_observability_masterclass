@@ -1,0 +1,28 @@
+apiVersion: 1
+
+deleteDatasources:
+  - name: Postgres
+    orgId: 1
+
+datasources:
+  - name: Postgres
+    type: postgres
+    orgId: 1
+    url: postgres:5432
+    user: suppliers
+    uid: "cdquems9lw2yoa"
+    secureJsonData:
+      password: suppliers
+    jsonData:
+      database: suppliers
+      sslmode: 'disable'
+      maxOpenConns: 100
+      maxIdleConns: 100
+      maxIdleConnsAuto: true
+      connMaxLifetime: 14400
+      postgresVersion: 1412
+      timescaledb: false
+      tlsAuth: false
+      tlsAuthWithCACert: false
+    version: 1
+    editable: true

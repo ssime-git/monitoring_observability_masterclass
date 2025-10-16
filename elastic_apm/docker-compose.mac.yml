@@ -1,0 +1,131 @@
+services:
+
+  fastapi-apm:
+    depends_on:
+      postgres-apm:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_started
+      apm-server:
+        condition: service_started
+      redis-apm:
+        condition: service_started
+    container_name: fastapi-apm
+    build: ./requirements/fastapi
+    image: fastapi
+    environment:
+      - ELASTIC_APM_SERVICE_NAME=fastapi
+      - ELASTIC_APM_SERVER_URL=http://apm-server:8200
+      - ELASTIC_APM_ENVIRONMENT=production
+      - ELASTIC_APM_TRANSACTION_SAMPLE_RATE=1.0
+      - ELASTIC_APM_CAPTURE_BODY=all
+      - ELASTIC_APM_CAPTURE_HEADERS=true
+      - ELASTIC_APM_DEBUG=true
+      - POSTGRES_HOST=postgres-apm
+      - POSTGRES_USER=suppliers
+      - POSTGRES_PASSWORD=suppliers
+      - POSTGRES_DATABASE=suppliers
+      - WEB_CONCURRENCY=4
+      - MAX_WORKERS=4
+      - WORKER_CONNECTIONS=2000
+    networks:
+      - elastic_apm
+    ports:
+      - 5001:5000
+    volumes:
+      - ./requirements/fastapi/app:/app
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "5000", "--reload"]
+
+  redis-apm:
+    container_name: redis-apm
+    image: redis
+    build:
+      context: ./requirements/redis
+    networks:
+      - elastic_apm
+    ports:
+      - 6379
+      - 9191
+    volumes:
+      - ./requirements/redis/data:/data
+    command:
+      - '/etc/redis_conf/redis_7.2.conf'
+
+  postgres-apm:
+    container_name: postgres-apm
+    image: postgres:14.12-alpine3.20
+    environment:
+      POSTGRES_USER: suppliers
+      POSTGRES_PASSWORD: suppliers
+      POSTGRES_DB: suppliers
+      DATA_SOURCE_NAME: postgresql://suppliers:suppliers@localhost:5432/?sslmode=disable
+    networks:
+      - elastic_apm
+    ports:
+      - 5432
+      - 9187
+    volumes:
+      - ./requirements/postgres/data:/var/lib/postgresql/data
+      - ./requirements/postgres/initdb.d:/docker-entrypoint-initdb.d
+      - ../client/data:/data
+      - ../client/import.sql:/client/import.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U suppliers"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    depends_on:
+      - elasticsearch
+      - apm-server
+      - redis-apm
+
+  elasticsearch:
+    container_name: elasticsearch
+    platform: linux/arm64
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.17.9
+    environment:
+      - discovery.type=single-node
+    networks:
+      - elastic_apm
+    ports:
+      - "9200:9200"
+    volumes:
+      - esdata:/usr/share/elasticsearch/data
+      - eslogs:/usr/share/elasticsearch/logs
+
+  kibana:
+    container_name: kibana
+    platform: linux/arm64
+    image: docker.elastic.co/kibana/kibana:7.17.9
+    depends_on:
+      - elasticsearch
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    networks:
+      - elastic_apm
+    ports:
+      - "5601:5601"
+
+  apm-server:
+    container_name: apm-server
+    platform: linux/arm64
+    image: docker.elastic.co/apm/apm-server:7.17.9
+    depends_on:
+      - elasticsearch
+    networks:
+      - elastic_apm
+    ports:
+      - "8200:8200"
+    environment:
+      - output.elasticsearch.hosts=["elasticsearch:9200"]
+
+networks:
+  elastic_apm:
+    name: elastic_apm
+
+volumes:
+  esdata:
+    driver: local
+  eslogs:
+    driver: local
